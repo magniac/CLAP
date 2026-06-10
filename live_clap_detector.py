@@ -147,14 +147,14 @@ class CLAPActivityDetector:
         sample_rate: int = 48000,
         channels: int = 2,
         input_device=None,
-        window_seconds: float = 2.0,
+        window_seconds: float = 1.0,
         hop_seconds: float = 1.0,
         analysis_buffer_seconds: float | None = None,
         analysis_queue_size: int = 4,
         on_threshold: float = 0.20,
         off_threshold: float | None = None,
-        on_windows_required: int = 1,
-        off_windows_required: int = 1,
+        on_windows_required: int = 3,
+        off_windows_required: int = 7,
         torch_num_threads: int | None = 1,
         allow_mono_input_fallback: bool = True,
         status_interval: float = 1.0,
@@ -434,9 +434,38 @@ class CLAPActivityDetector:
             parts.append(f"dropped analysis blocks: {dropped_analysis_blocks}")
         return " | ".join(parts)
 
+    def scores_payload(self) -> dict[str, Any]:
+        """Structured per-activity scores for the UI.
+
+        Each activity's score is the max across logical hand channels, so a
+        single bar represents 'how strongly is this sound present right now'.
+        """
+        with self.lock:
+            labels = list(self.labels)
+            target_scores_by_channel = [list(scores) for scores in self.state.target_scores_by_channel]
+            active = self.state.target_active
+
+        aggregated: dict[str, float | None] = {label: None for label in labels}
+        for channel_scores in target_scores_by_channel:
+            for label, score in channel_scores:
+                if label in aggregated and (aggregated[label] is None or score > aggregated[label]):
+                    aggregated[label] = score
+
+        scores = [
+            [label, float(aggregated[label]) if aggregated[label] is not None else 0.0]
+            for label in labels
+        ]
+        return {
+            "type": "scores",
+            "scores": scores,
+            "on_threshold": self.on_threshold,
+            "active": active,
+        }
+
     def status_loop(self) -> None:
         while self.state.running:
             _safe_status_put(self.status_queue, self.format_status())
+            _safe_status_put(self.status_queue, self.scores_payload())
             time.sleep(self.status_interval)
 
     def open_input_stream(self, input_channels: int) -> sd.InputStream:
@@ -504,14 +533,14 @@ def run_clap_detector(
     sample_rate: int = 48000,
     channels: int = 2,
     input_device=None,
-    window_seconds: float = 2.0,
+    window_seconds: float = 1.0,
     hop_seconds: float = 1.0,
     analysis_buffer_seconds: float | None = None,
     analysis_queue_size: int = 4,
     on_threshold: float = 0.20,
     off_threshold: float | None = None,
-    on_windows_required: int = 1,
-    off_windows_required: int = 1,
+    on_windows_required: int = 3,
+    off_windows_required: int = 7,
     torch_num_threads: int | None = 1,
     allow_mono_input_fallback: bool = True,
     status_interval: float = 1.0,
@@ -545,14 +574,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-rate", type=int, default=48000)
     parser.add_argument("--channels", type=int, default=2)
     parser.add_argument("--input-device", default=None)
-    parser.add_argument("--window-seconds", type=float, default=2.0)
+    parser.add_argument("--window-seconds", type=float, default=1.0)
     parser.add_argument("--hop-seconds", type=float, default=1.0)
     parser.add_argument("--analysis-buffer-seconds", type=float, default=None)
     parser.add_argument("--analysis-queue-size", type=int, default=4)
     parser.add_argument("--on-threshold", type=float, default=0.20)
     parser.add_argument("--off-threshold", type=float, default=None)
-    parser.add_argument("--on-windows-required", type=int, default=1)
-    parser.add_argument("--off-windows-required", type=int, default=1)
+    parser.add_argument("--on-windows-required", type=int, default=3)
+    parser.add_argument("--off-windows-required", type=int, default=7)
     parser.add_argument("--torch-num-threads", type=int, default=1)
     parser.add_argument("--no-mono-input-fallback", action="store_true")
     parser.add_argument("--status-interval", type=float, default=1.0)

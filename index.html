@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Audio Augmentation for Mindfulness</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #1a1d24;
+    --panel-2: #14171d;
+    --text: #e6e8ec;
+    --muted: #9aa0aa;
+    --accent: #4f8cff;
+    --green: #2bd67b;
+    --gray-bar: #3a3f4a;
+    --danger: #ff5d5d;
+    --chip: #262a33;
+    --border: #262a33;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .app { display: flex; height: 100vh; }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    width: 300px;
+    flex-shrink: 0;
+    background: var(--panel-2);
+    border-right: 1px solid var(--border);
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    overflow-y: auto;
+  }
+  .sidebar h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 10px; }
+  .brand { font-size: 15px; font-weight: 700; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  select, .num-input {
+    width: 100%;
+    padding: 9px 10px;
+    border-radius: 8px;
+    border: 1px solid #2c313b;
+    background: #11141a;
+    color: var(--text);
+    font-size: 13px;
+  }
+  select:focus, .num-input:focus, input[type="text"]:focus { outline: none; border-color: var(--accent); }
+  .sidebar-spacer { flex: 1; }
+  .gear {
+    align-self: flex-start;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    opacity: 0.18;
+    cursor: pointer;
+    font-size: 18px;
+    padding: 4px;
+    transition: opacity 0.2s;
+  }
+  .gear:hover { opacity: 0.7; }
+
+  /* ---------- Main ---------- */
+  .main { flex: 1; overflow-y: auto; padding: 40px 48px; }
+  .main-inner { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 30px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 32px; }
+  .section { margin-bottom: 32px; }
+  .section > label { display: block; font-size: 15px; color: var(--text); margin-bottom: 12px; font-weight: 600; }
+  .row { display: flex; gap: 10px; }
+  input[type="text"] {
+    flex: 1;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid #2c313b;
+    background: #11141a;
+    color: var(--text);
+    font-size: 15px;
+  }
+  /* The "I want to be mindful of ..." prompt is the centerpiece. */
+  .mindful-section { margin-bottom: 48px; }
+  .section > label.mindful-label { font-size: 52px; font-weight: 800; line-height: 1.15; letter-spacing: -0.02em; margin-bottom: 26px; }
+  #activity-input { font-size: 38px; padding: 30px 32px; border-radius: 18px; }
+  #add-btn { font-size: 28px; padding: 0 48px; border-radius: 18px; }
+  button {
+    border: none;
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    color: #fff;
+    background: var(--accent);
+  }
+  button.secondary { background: var(--chip); color: var(--text); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Compact score readouts, laid out in a single wrapping row. */
+  .activities { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 14px; }
+  .empty { color: var(--muted); font-size: 14px; font-style: italic; }
+  /* Three cards per row: each takes a third of the width minus the two gaps. */
+  .activity {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    width: calc((100% - 28px) / 3);
+  }
+  .activity-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+  .activity-name { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .activity-remove {
+    background: transparent; color: var(--muted); padding: 0;
+    width: 20px; height: 20px; font-size: 18px; line-height: 1; flex-shrink: 0;
+  }
+  .activity-remove:hover { color: var(--danger); }
+  .bar-row { display: flex; align-items: center; gap: 10px; }
+  .bar-track {
+    flex: 1;
+    position: relative;
+    height: 12px;
+    background: #0b0d11;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 0%;
+    background: var(--gray-bar);
+    border-radius: 6px;
+    transition: width 0.25s ease, background 0.2s ease;
+  }
+  .bar-fill.over { background: var(--green); }
+  .bar-threshold {
+    position: absolute; top: -2px; bottom: -2px;
+    width: 2px; background: rgba(255,255,255,0.55);
+  }
+  .bar-score { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); min-width: 48px; text-align: right; }
+
+  .slider-row { display: flex; align-items: center; gap: 16px; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .gain-val { font-variant-numeric: tabular-nums; font-size: 16px; min-width: 72px; text-align: right; }
+
+  .main-btn { width: 100%; padding: 16px; font-size: 16px; }
+  .main-btn.running { background: var(--danger); }
+
+  .status { margin-top: 28px; border-top: 1px solid var(--border); padding-top: 20px; }
+  .status-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--muted); align-self: center; flex-shrink: 0; }
+  .dot.on { background: var(--green); }
+  .dot.boost { background: var(--green); box-shadow: 0 0 10px var(--green); }
+  .dot.loading { background: #f5a623; box-shadow: 0 0 10px #f5a623; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .state-word { font-size: 34px; font-weight: 800; letter-spacing: -0.01em; }
+  .state-word.state-loading { color: #f5a623; }
+  .state-word.state-boost { color: var(--green); }
+  .state-word.state-stopped { color: var(--muted); }
+  .state-detail { font-size: 16px; color: var(--muted); }
+  .log {
+    background: #0b0d11; border-radius: 10px; padding: 12px 14px;
+    height: 130px; overflow-y: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px; color: var(--muted); white-space: pre-wrap; line-height: 1.5;
+  }
+  .err { color: var(--danger); margin-top: 10px; font-size: 13px; }
+
+  /* ---------- Debug panel ---------- */
+  .debug-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: none; z-index: 50;
+  }
+  .debug-overlay.open { display: block; }
+  .debug-panel {
+    position: fixed; top: 0; right: 0; height: 100vh; width: 380px;
+    background: var(--panel); border-left: 1px solid var(--border);
+    padding: 24px; overflow-y: auto; z-index: 51;
+    transform: translateX(100%); transition: transform 0.22s ease;
+  }
+  .debug-overlay.open .debug-panel { transform: translateX(0); }
+  .debug-panel h2 { font-size: 16px; margin: 0 0 4px; }
+  .debug-panel .hint { color: var(--muted); font-size: 12px; margin: 0 0 20px; }
+  .debug-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .debug-grid .field.full { grid-column: 1 / -1; }
+  .debug-grid .check-field { display: flex; align-items: center; gap: 10px; }
+  .debug-grid .check-field input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .debug-grid .check-field label { font-size: 12px; color: var(--text); }
+  .debug-close { position: absolute; top: 18px; right: 18px; background: transparent; color: var(--muted); padding: 4px; font-size: 18px; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div>
+        <div class="brand">Mindfulness Audio</div>
+      </div>
+      <div>
+        <h2>Devices</h2>
+        <div class="field" style="margin-bottom:14px;">
+          <label for="input-device">Input (microphone)</label>
+          <select id="input-device"></select>
+        </div>
+        <div class="field">
+          <label for="output-device">Output (headphones)</label>
+          <select id="output-device"></select>
+        </div>
+      </div>
+      <div class="sidebar-spacer"></div>
+      <button class="gear" id="gear" title="Developer settings">&#9881;</button>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <div class="main-inner">
+        <h1>Audio Augmentation for Mindfulness</h1>
+        <p class="sub">Boost your hearing for the sounds that matter.</p>
+
+        <div class="section mindful-section">
+          <label class="mindful-label" for="activity-input">I want to be mindful of &hellip;</label>
+          <div class="row">
+            <input type="text" id="activity-input" placeholder="e.g. typing, rubbing hands" autocomplete="off" />
+            <button id="add-btn">Add</button>
+          </div>
+          <div class="activities" id="activities"></div>
+        </div>
+
+        <div class="section">
+          <label for="gain">Boost gain</label>
+          <div class="slider-row">
+            <input type="range" id="gain" min="0" max="24" step="0.5" value="12" />
+            <span class="gain-val" id="gain-val">+12.0 dB</span>
+          </div>
+        </div>
+
+        <button class="main-btn" id="toggle-btn">Start</button>
+
+        <div class="status">
+          <div class="status-head">
+            <span class="dot" id="dot"></span>
+            <span class="state-word state-stopped" id="state-word">Stopped</span>
+            <span class="state-detail" id="state-detail"></span>
+          </div>
+          <div class="log" id="log"></div>
+          <div class="err" id="err"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Debug panel (hidden) -->
+  <div class="debug-overlay" id="debug-overlay">
+    <div class="debug-panel">
+      <button class="debug-close" id="debug-close">&times;</button>
+      <h2>Developer settings</h2>
+      <p class="hint">Changes apply the next time you press Start. (Boost gain is live.)</p>
+      <div class="debug-grid" id="debug-grid"></div>
+    </div>
+  </div>
+
+<script>
+  const activities = [];
+  let running = false;
+  let lastDevices = { input: [], output: [] };
+
+  const $ = (id) => document.getElementById(id);
+  const inputEl = $("activity-input");
+  const activitiesEl = $("activities");
+  const gainEl = $("gain");
+  const gainValEl = $("gain-val");
+  const toggleBtn = $("toggle-btn");
+  const dotEl = $("dot");
+  const wordEl = $("state-word");
+  const detailEl = $("state-detail");
+  const logEl = $("log");
+  const errEl = $("err");
+  const inputDeviceEl = $("input-device");
+  const outputDeviceEl = $("output-device");
+
+  // Parameters exposed in the hidden debug panel.
+  const DEBUG_FIELDS = [
+    { key: "window_seconds", label: "Analysis window length (sec of audio scored at once)", step: "0.1" },
+    { key: "hop_seconds", label: "Hop between windows (sec; how often a new score is computed)", step: "0.1" },
+    { key: "on_threshold", label: "Score needed to turn boost ON (0–1 similarity)", step: "0.01" },
+    { key: "off_threshold", label: "Score to keep boost ON / drop below to turn OFF (blank = same as ON)", step: "0.01" },
+    { key: "on_windows_required", label: "Consecutive windows above threshold to switch boost ON", step: "1" },
+    { key: "off_windows_required", label: "Consecutive windows below threshold to switch boost OFF", step: "1" },
+    { key: "base_gain_db", label: "Base gain when no target sound is detected (dB)", step: "0.5" },
+    { key: "input_channels", label: "Microphone input channels (1 = mono, 2 = stereo)", step: "1" },
+    { key: "torch_num_threads", label: "PyTorch CPU threads for the model", step: "1" },
+    { key: "analysis_queue_size", label: "Max audio windows buffered for analysis", step: "1" },
+  ];
+
+  // ---------- Debug panel ----------
+  function buildDebugFields() {
+    const grid = $("debug-grid");
+    grid.innerHTML = "";
+    DEBUG_FIELDS.forEach((f) => {
+      const wrap = document.createElement("div");
+      wrap.className = "field";
+      const lab = document.createElement("label");
+      lab.textContent = f.label;
+      lab.htmlFor = "dbg-" + f.key;
+      const inp = document.createElement("input");
+      inp.type = "number";
+      inp.className = "num-input";
+      inp.id = "dbg-" + f.key;
+      inp.step = f.step;
+      wrap.appendChild(lab);
+      wrap.appendChild(inp);
+      grid.appendChild(wrap);
+    });
+    // Allow-feedback checkbox (needed when output is speakers, not headphones).
+    const fbWrap = document.createElement("div");
+    fbWrap.className = "field full check-field";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.id = "dbg-allow_feedback";
+    const cbLab = document.createElement("label");
+    cbLab.htmlFor = "dbg-allow_feedback";
+    cbLab.textContent = "Allow feedback (enable mic → speakers; off for headphones)";
+    cbLab.style.margin = "0";
+    fbWrap.appendChild(cb);
+    fbWrap.appendChild(cbLab);
+    grid.appendChild(fbWrap);
+  }
+  function populateDebug(settings) {
+    DEBUG_FIELDS.forEach((f) => {
+      const inp = $("dbg-" + f.key);
+      if (!inp) return;
+      const v = settings[f.key];
+      inp.value = (v === null || v === undefined) ? "" : v;
+    });
+    const cb = $("dbg-allow_feedback");
+    if (cb) cb.checked = !!settings.allow_feedback;
+  }
+  function readDebug() {
+    const out = {};
+    DEBUG_FIELDS.forEach((f) => {
+      const inp = $("dbg-" + f.key);
+      if (inp && inp.value !== "") out[f.key] = parseFloat(inp.value);
+      else if (inp && f.key === "off_threshold") out[f.key] = null;
+    });
+    const cb = $("dbg-allow_feedback");
+    if (cb) out.allow_feedback = cb.checked;
+    return out;
+  }
+  function toggleDebug(open) {
+    $("debug-overlay").classList.toggle("open", open);
+  }
+  $("gear").onclick = () => toggleDebug(true);
+  $("debug-close").onclick = () => toggleDebug(false);
+  $("debug-overlay").addEventListener("click", (e) => {
+    if (e.target.id === "debug-overlay") toggleDebug(false);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.shiftKey && (e.ctrlKey || e.metaKey) && (e.key === "D" || e.key === "d")) {
+      toggleDebug(!$("debug-overlay").classList.contains("open"));
+    }
+  });
+  if (location.hash === "#debug") setTimeout(() => toggleDebug(true), 0);
+
+  // ---------- Activities + score bars ----------
+  function renderActivities() {
+    activitiesEl.innerHTML = "";
+    if (activities.length === 0) {
+      const span = document.createElement("span");
+      span.className = "empty";
+      span.textContent = "Add at least one sound you want to be mindful of.";
+      activitiesEl.appendChild(span);
+      return;
+    }
+    activities.forEach((name, i) => {
+      const card = document.createElement("div");
+      card.className = "activity";
+      card.dataset.label = name.toLowerCase();
+
+      const head = document.createElement("div");
+      head.className = "activity-head";
+      const nm = document.createElement("span");
+      nm.className = "activity-name";
+      nm.textContent = name;
+      const rm = document.createElement("button");
+      rm.className = "activity-remove";
+      rm.textContent = "×";
+      rm.title = "Remove";
+      rm.onclick = () => { activities.splice(i, 1); renderActivities(); };
+      head.appendChild(nm);
+      head.appendChild(rm);
+
+      const barRow = document.createElement("div");
+      barRow.className = "bar-row";
+      const track = document.createElement("div");
+      track.className = "bar-track";
+      const fill = document.createElement("div");
+      fill.className = "bar-fill";
+      const marker = document.createElement("div");
+      marker.className = "bar-threshold";
+      track.appendChild(fill);
+      track.appendChild(marker);
+      const score = document.createElement("span");
+      score.className = "bar-score";
+      score.textContent = "–";
+      barRow.appendChild(track);
+      barRow.appendChild(score);
+
+      card.appendChild(head);
+      card.appendChild(barRow);
+      activitiesEl.appendChild(card);
+    });
+  }
+
+  // Labels currently "responsible" for an active boost. Once an activity
+  // crosses the threshold while the boost is on it stays latched (green) until
+  // the boost turns off, so its bar does not flicker when the score dips below
+  // the threshold (hysteresis keeps the boost on through those dips).
+  let boostCausers = new Set();
+
+  function updateBars(scoresObj) {
+    const onThreshold = (scoresObj && scoresObj.on_threshold != null)
+      ? scoresObj.on_threshold : 0.20;
+    const boostOn = !!(scoresObj && scoresObj.active);
+    const scaleMax = Math.max(0.5, onThreshold * 2.5);
+    const map = {};
+    if (scoresObj && Array.isArray(scoresObj.scores)) {
+      scoresObj.scores.forEach(([label, val]) => { map[label.toLowerCase()] = val; });
+    }
+    if (!boostOn) {
+      boostCausers.clear();
+    } else {
+      // Latch any activity at/above the threshold as a cause of the boost.
+      Object.keys(map).forEach((label) => {
+        if (map[label] >= onThreshold) boostCausers.add(label);
+      });
+    }
+    document.querySelectorAll(".activity").forEach((card) => {
+      const label = card.dataset.label;
+      const fill = card.querySelector(".bar-fill");
+      const marker = card.querySelector(".bar-threshold");
+      const scoreEl = card.querySelector(".bar-score");
+      marker.style.left = Math.min(100, (onThreshold / scaleMax) * 100) + "%";
+      if (running && label in map) {
+        const val = map[label];
+        const pct = Math.max(0, Math.min(1, val / scaleMax)) * 100;
+        fill.style.width = pct + "%";
+        fill.classList.toggle("over", boostOn && boostCausers.has(label));
+        scoreEl.textContent = val.toFixed(3);
+      } else {
+        fill.style.width = "0%";
+        fill.classList.remove("over");
+        scoreEl.textContent = running ? "…" : "–";
+      }
+    });
+  }
+
+  function addActivity() {
+    inputEl.value.split(",").map((s) => s.trim()).filter(Boolean).forEach((name) => {
+      if (!activities.some((a) => a.toLowerCase() === name.toLowerCase())) activities.push(name);
+    });
+    inputEl.value = "";
+    renderActivities();
+    inputEl.focus();
+  }
+  $("add-btn").onclick = addActivity;
+  inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") addActivity(); });
+
+  // ---------- Gain ----------
+  function fmtGain() {
+    const v = parseFloat(gainEl.value);
+    gainValEl.textContent = (v >= 0 ? "+" : "") + v.toFixed(1) + " dB";
+  }
+  let gainTimer = null;
+  gainEl.addEventListener("input", () => {
+    fmtGain();
+    if (running) {
+      clearTimeout(gainTimer);
+      gainTimer = setTimeout(() => post("/gain", { boost_gain_db: parseFloat(gainEl.value) }), 120);
+    }
+  });
+
+  // ---------- Networking ----------
+  async function post(path, body) {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    return res.json();
+  }
+
+  toggleBtn.onclick = async () => {
+    if (!running) {
+      if (activities.length === 0) { errEl.textContent = "Add at least one sound first."; return; }
+      errEl.textContent = "";
+      toggleBtn.disabled = true;
+      toggleBtn.textContent = "Starting…";
+      const payload = Object.assign({
+        activities,
+        boost_gain_db: parseFloat(gainEl.value),
+        input_device_name: inputDeviceEl.value,
+        output_device_name: outputDeviceEl.value,
+      }, readDebug());
+      applyStatus(await post("/start", payload));
+      toggleBtn.disabled = false;
+    } else {
+      toggleBtn.disabled = true;
+      applyStatus(await post("/stop", {}));
+      toggleBtn.disabled = false;
+    }
+  };
+
+  function fillDeviceSelect(sel, names, current) {
+    sel.innerHTML = "";
+    const all = names.slice();
+    if (current && !all.includes(current)) all.unshift(current);
+    all.forEach((name) => {
+      const opt = document.createElement("option");
+      opt.value = name; opt.textContent = name;
+      if (name === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function loadDevices(settings) {
+    try {
+      const res = await fetch("/devices");
+      lastDevices = await res.json();
+    } catch (e) { lastDevices = { input: [], output: [] }; }
+    fillDeviceSelect(inputDeviceEl, lastDevices.input || [], settings.input_device_name);
+    fillDeviceSelect(outputDeviceEl, lastDevices.output || [], settings.output_device_name);
+  }
+
+  let settingsInitialized = false;
+  function applyStatus(s) {
+    if (!s) return;
+    running = !!s.running;
+    toggleBtn.textContent = running ? "Stop" : "Start";
+    toggleBtn.classList.toggle("running", running);
+    inputDeviceEl.disabled = running;
+    outputDeviceEl.disabled = running;
+
+    // While the detector is loading the CLAP model it has not produced any
+    // scores yet; show "Loading" rather than "Listening" during that window.
+    const ready = s.scores != null;
+    const loading = running && s.clap_enabled && !ready;
+
+    dotEl.className = "dot";
+    wordEl.className = "state-word";
+    if (!running) {
+      wordEl.classList.add("state-stopped");
+      wordEl.textContent = "Stopped";
+      detailEl.textContent = "";
+    } else if (loading) {
+      dotEl.classList.add("loading");
+      wordEl.classList.add("state-loading");
+      wordEl.textContent = "Loading…";
+      detailEl.textContent = "starting the CLAP model (10–15s)";
+    } else if (s.gain_state === "boost") {
+      dotEl.classList.add("boost");
+      wordEl.classList.add("state-boost");
+      wordEl.textContent = "Boost";
+      detailEl.textContent = "+" + Number(s.boost_gain_db).toFixed(1) + " dB";
+    } else {
+      dotEl.classList.add("on");
+      wordEl.textContent = "Listening";
+      detailEl.textContent = "base " + Number(s.base_gain_db).toFixed(1) + " dB";
+    }
+
+    updateBars(s.scores);
+
+    if (Array.isArray(s.status_lines)) {
+      logEl.textContent = s.status_lines.slice(-40).join("\n");
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    errEl.textContent = s.error ? ("Error: " + s.error) : "";
+
+    // One-time init of sliders/debug from server settings.
+    if (!settingsInitialized && s.settings) {
+      settingsInitialized = true;
+      if (s.settings.boost_gain_db != null) { gainEl.value = s.settings.boost_gain_db; fmtGain(); }
+      populateDebug(s.settings);
+      loadDevices(s.settings);
+    }
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch("/status");
+      applyStatus(await res.json());
+    } catch (e) {
+      wordEl.className = "state-word state-stopped";
+      wordEl.textContent = "Server unreachable";
+      detailEl.textContent = "";
+    }
+  }
+
+  buildDebugFields();
+  fmtGain();
+  renderActivities();
+  refresh();
+  setInterval(refresh, 700);
+</script>
+</body>
+</html>

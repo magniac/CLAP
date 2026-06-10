@@ -108,6 +108,142 @@ python3 paddle_stream_new.py \
 
 Stop with `Ctrl+C`.
 
+## Web UI
+
+For a simple point-and-click interface, run the local web server instead of the
+command line. It serves a single page titled **Mindfulness Audio Amplification**
+where you choose the sounds to amplify, watch live detection scores, set the
+boost gain, and pick your audio devices.
+
+```bash
+cd /Users/magniac/Mindful_Audio_Research && \
+source clap311/bin/activate && \
+cd CLAP && \
+python3 app.py
+```
+
+Then open <http://127.0.0.1:8765> in a browser.
+
+### Main controls
+
+- **I want to be mindful of …**: type an activity and press Add (or Enter). Each
+  activity becomes its own card. You can also paste a comma-separated list. These
+  are the CLAP target labels.
+- **Score bars**: while running, each activity card shows a live bar of the CLAP
+  cosine-similarity score for that sound (the maximum across hands). A tick marks
+  the on-threshold. The bar is **gray when the score is below the threshold** and
+  turns **green when it crosses the threshold**, so you can see at a glance which
+  sounds are being detected.
+- **Boost gain**: a slider from `0` to `24` dB. While the stream is running,
+  moving the slider changes the boost gain **live**, with no restart.
+- **Start / Stop**: starts or stops the audio stream and CLAP detector. A status
+  line shows whether the system is stopped, listening at base gain, or actively
+  boosting, followed by a short log of detector messages.
+
+Activities are fixed when you press Start, because they become CLAP text labels.
+To change which activities are amplified, edit the list and press Stop then
+Start. The gain slider, by contrast, takes effect immediately.
+
+### Device sidebar
+
+The left sidebar has **Input (microphone)** and **Output (headphones)**
+dropdowns, populated from the devices Pedalboard can see on your machine. Pick
+the devices you want before pressing Start; the selection is applied when the
+stream starts and is locked while it runs.
+
+If a configured default device name is not currently present, it is still shown
+as a selectable option so your normal setup stays selected.
+
+### Hidden developer panel
+
+A faint gear icon at the bottom of the sidebar opens a hidden **Developer
+settings** panel for tuning detector parameters. You can also open it with
+`Ctrl+Shift+D` (or `Cmd+Shift+D`), or by loading
+<http://127.0.0.1:8765/#debug>.
+
+The panel exposes the parameters that are otherwise only available on the
+command line:
+
+```text
+window_seconds, hop_seconds,
+on_threshold, off_threshold (blank = same as on),
+on_windows_required, off_windows_required,
+base_gain_db, input_channels,
+torch_num_threads, analysis_queue_size,
+allow_feedback (checkbox)
+```
+
+These values are pre-filled from the server's current settings. Changes apply
+the next time you press Start (boost gain remains live).
+
+#### Using built-in speakers (the "may cause feedback" error)
+
+Pedalboard refuses to open a stream when the input looks like a microphone and
+the output looks like a speaker, because amplifying the mic back out through
+speakers can create a feedback loop. If you try to run with, for example, the
+MacBook's built-in microphone and speakers, you will see:
+
+```text
+The audio input device passed to AudioStream looks like a microphone, and the
+output device looks like a speaker. This setup may cause feedback. To create an
+AudioStream anyways, pass `allow_feedback=True` to the AudioStream constructor.
+```
+
+To run anyway, open the developer panel and tick **Allow feedback**, then press
+Start. Keep the boost gain low to avoid loud feedback. This option is off by
+default and is intended for testing; the normal wrist-mic + headphones setup
+does not need it.
+
+### How it works / files
+
+```text
+app.py        # local web server; owns a StreamController
+index.html    # single-page frontend (sidebar, score bars, debug panel)
+```
+
+`app.py` drives the same `StreamController` used by `paddle_stream_new.py`, so
+the audio path and CLAP detector behave identically to the command-line tool.
+The detector publishes structured per-activity scores that the server returns
+from `GET /status`, which the UI polls to animate the bars.
+
+The web server uses only the Python standard library (`http.server`); no extra
+packages are required beyond the existing audio and CLAP dependencies. Its HTTP
+endpoints are:
+
+```text
+GET  /          # the UI page
+GET  /status    # running state, gain state, per-activity scores, settings
+GET  /devices   # available Pedalboard input/output device names
+POST /start     # start with activities, gain, devices, and detector params
+POST /stop      # stop the stream and detector
+POST /gain      # change the boost gain live
+```
+
+### Choosing devices for the web UI
+
+You normally pick devices from the sidebar dropdowns. The dropdowns default to
+the same devices as the command line:
+
+```text
+--input-device-name  "Sonic Presence SP-15 V2.0"
+--output-device-name "External Headphones"
+```
+
+You can change those defaults (the values the dropdowns start on) when launching
+the server:
+
+```bash
+python3 app.py \
+  --input-device-name "Sonic Presence SP-15 V2.0" \
+  --output-device-name "External Headphones"
+```
+
+You can also change the host or port:
+
+```bash
+python3 app.py --host 127.0.0.1 --port 8765
+```
+
 ## Listing devices
 
 Use:
